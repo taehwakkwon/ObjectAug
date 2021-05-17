@@ -3,14 +3,15 @@ import time
 import json
 import random
 import numpy as np
-from multiprocessing import Pool, Manager
+
+from multiprocessing import Pool, Manager, cpu_count
 from itertools import repeat
 from collections import deque
 
-from tqdm import tqdm
-from imantics import Polygons, Mask
+from imantics import  Mask
+import albumentations as A
+
 from pycocotools.coco import COCO
-from torch.utils.data import Dataset, DataLoader
 import cv2
 
 '''
@@ -21,8 +22,8 @@ import cv2
 ################Setting these followings###################
 json_dir = '/opt/ml/input/data/train.json' #directory to load train_all.json
 data_dir = '/opt/ml/input/data' #directory to load image
-saving_name = 'train.json' #directory to save obj_augmented train_all.json
-multiprocessor = 8
+saving_name = 'data/train.json' #directory to save obj_augmented train_all.json
+multiprocessor = cpu_count()
 
 catIds=[0,1,3,4,5,7,9,10] #category_ids to crop
 
@@ -36,7 +37,6 @@ for folder in ['batch_01_vt', 'batch_02_vt', 'batch_03']:
     if not os.path.isdir(path):
         os.makedirs(path)
 ############################################################
-
 
 def load_json(json_dir):
     with open(json_dir) as f:
@@ -187,8 +187,6 @@ print('='*100 + '\n\n\n')
 
 random.shuffle(obj_img)
 
-
-
 obj_img = deque(obj_img)
 ################################################
 
@@ -225,7 +223,15 @@ def add_patchs(img_id, annotations):
             image_id = obj_img[0][2]
         
         category_id, img_obj, image_id, width, height, ann_id = obj_img[0]
+        
+        _area = width * height
+        
+        if _area > 55_000:
+            ratio = np.random.randint(45_000, 55_000)/_area
+            width, height = map(int, [width*ratio, height*ratio])
+            img_obj = A.resize(img_obj, height=height, width=width)
 
+        
         mask_acc = get_accumulate(mask)
 
         area, r, c = find_space(mask_acc, width, height)
@@ -237,7 +243,7 @@ def add_patchs(img_id, annotations):
         annotation['segmentation'] = gen_maskToseg(_mask)
 
         annotation['area'] = area
-        annotation['bbox'] = [c, r, c+width, r+height]
+        annotation['bbox'] = [c, r, width, height]
         annotation['iscrowd'] = 0
 
         stack.append(annotation)
